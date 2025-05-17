@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Web SSH Client</title>
+  <!-- xterm.css via unpkg CDN -->
+  <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css" />
+  <style>
+    body { margin: 0; display: flex; flex-direction: column; height: 100vh; font-family: Arial, sans-serif; }
+    #form { padding: 10px; background: #f2f2f2; }
+    #terminal { flex: 1; display: none; }
+    #form input[type="text"], #form input[type="password"], #form textarea { width: 200px; }
+  </style>
+</head>
+<body>
+  <div id="form">
+    <label>Host: <input type="text" id="host" placeholder="example.com" /></label>
+    <label>Port: <input type="number" id="port" value="22" style="width:60px;" /></label>
+    <label>Username: <input type="text" id="username" /></label>
+    <label><input type="radio" name="auth" value="password" checked /> Password</label>
+    <label><input type="radio" name="auth" value="key" /> Private Key</label>
+    <div id="password-field">
+      <label>Password: <input type="password" id="password" /></label>
+    </div>
+    <div id="key-field" style="display:none;">
+      <label>Private Key:<br /><textarea id="privateKey" rows="6"></textarea></label><br />
+      <label>Passphrase (optional): <input type="password" id="passphrase" /></label>
+    </div>
+    <button id="connect">Connect</button>
+  </div>
+  <div id="terminal"></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- xterm.js UMD bundle via unpkg CDN -->
+  <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
+  <script>
+    const socket = io();
+    const term = new Terminal();
+    let connected = false;
+
+    function showForm(show) {
+      document.getElementById('form').style.display = show ? 'block' : 'none';
+      document.getElementById('terminal').style.display = show ? 'none' : 'block';
+    }
+
+    document.getElementsByName('auth').forEach(radio => {
+      radio.addEventListener('change', e => {
+        if (e.target.value === 'password') {
+          document.getElementById('password-field').style.display = '';
+          document.getElementById('key-field').style.display = 'none';
+        } else {
+          document.getElementById('password-field').style.display = 'none';
+          document.getElementById('key-field').style.display = '';
+        }
+      });
+    });
+
+    document.getElementById('connect').addEventListener('click', () => {
+      const host = document.getElementById('host').value;
+      const port = parseInt(document.getElementById('port').value, 10);
+      const username = document.getElementById('username').value;
+      const auth = document.querySelector('input[name="auth"]:checked').value;
+      const password = auth === 'password' ? document.getElementById('password').value : null;
+      const privateKey = auth === 'key' ? document.getElementById('privateKey').value : null;
+      const passphrase = auth === 'key' ? document.getElementById('passphrase').value : null;
+      socket.emit('ssh_connect', { host, port, username, password, privateKey, passphrase });
+    });
+
+    socket.on('ssh_ready', () => {
+      showForm(false);
+      term.open(document.getElementById('terminal'));
+      // open the terminal
+      term.focus();
+      connected = true;
+      term.onData(data => socket.emit('ssh_input', data));
+      socket.on('ssh_data', data => term.write(data));
+      socket.on('ssh_close', () => {
+        alert('SSH session closed');
+        connected = false;
+        showForm(true);
+      });
+      socket.on('ssh_error', msg => {
+        alert(msg);
+        if (!connected) showForm(true);
+      });
+    });
+  </script>
+</body>
+</html>
