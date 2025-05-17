@@ -2,14 +2,57 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Web SSH Client</title>
   <!-- xterm.css via unpkg CDN -->
   <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css" />
   <style>
     body { margin: 0; display: flex; flex-direction: column; height: 100vh; font-family: Arial, sans-serif; }
-    #form { padding: 10px; background: #f2f2f2; }
-    #terminal { flex: 1; display: none; }
-    #form input[type="text"], #form input[type="password"], #form textarea { width: 200px; }
+    #form {
+      padding: 10px;
+      background: #f8f9fa;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    #form label {
+      display: flex;
+      flex-direction: column;
+      font-size: 14px;
+      margin: 5px;
+    }
+    #form input[type="text"],
+    #form input[type="password"],
+    #form input[type="number"],
+    #form textarea {
+      width: 200px;
+      max-width: 100%;
+      padding: 6px 8px;
+      margin-top: 4px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    #form button {
+      padding: 8px 16px;
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin: 5px;
+    }
+    #form button:hover {
+      background-color: #0056b3;
+    }
+    #terminal { flex: 1; display: none; overflow: hidden; }
+    @media (max-width: 600px) {
+      #form { flex-direction: column; align-items: stretch; }
+      #form button { width: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -30,11 +73,19 @@
   </div>
   <div id="terminal"></div>
   <script src="/socket.io/socket.io.js"></script>
-  <!-- xterm.js UMD bundle via unpkg CDN -->
+  <!-- xterm.js and fit addon UMD bundles via unpkg CDN -->
   <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://unpkg.com/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.js"></script>
   <script>
     const socket = io();
-    const term = new Terminal();
+    const term = new Terminal({
+      cursorBlink: true,
+      fontFamily: 'monospace',
+      fontSize: 14,
+      theme: { background: '#1e1e1e', foreground: '#d4d4d4' }
+    });
+    const fitAddon = new (FitAddon.FitAddon || FitAddon)();
+    term.loadAddon(fitAddon);
     let connected = false;
 
     function showForm(show) {
@@ -68,7 +119,8 @@
     socket.on('ssh_ready', () => {
       showForm(false);
       term.open(document.getElementById('terminal'));
-      // open the terminal
+      fitAddon.fit();
+      socket.emit('ssh_resize', { cols: term.cols, rows: term.rows });
       term.focus();
       connected = true;
       term.onData(data => socket.emit('ssh_input', data));
@@ -81,6 +133,12 @@
       socket.on('ssh_error', msg => {
         alert(msg);
         if (!connected) showForm(true);
+      });
+      window.addEventListener('resize', () => {
+        fitAddon.fit();
+        if (connected) {
+          socket.emit('ssh_resize', { cols: term.cols, rows: term.rows });
+        }
       });
     });
   </script>
