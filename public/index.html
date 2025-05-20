@@ -57,6 +57,13 @@
 </head>
 <body>
   <div id="form">
+    <label>Profile:
+      <select id="profileSelect">
+        <option value="">New Profile</option>
+      </select>
+    </label>
+    <button type="button" id="saveProfile">Save Profile</button>
+    <button type="button" id="deleteProfile">Delete Profile</button>
     <label>Host: <input type="text" id="host" placeholder="example.com" /></label>
     <label>Port: <input type="number" id="port" value="22" style="width:60px;" /></label>
     <label>Username: <input type="text" id="username" /></label>
@@ -87,6 +94,99 @@
     const fitAddon = new (FitAddon.FitAddon || FitAddon)();
     term.loadAddon(fitAddon);
     let connected = false;
+
+    const profileSelect = document.getElementById('profileSelect');
+    const saveProfileBtn = document.getElementById('saveProfile');
+    const deleteProfileBtn = document.getElementById('deleteProfile');
+    function getProfiles() {
+      return JSON.parse(localStorage.getItem('sshProfiles') || '{}');
+    }
+    function saveProfiles(profiles) {
+      localStorage.setItem('sshProfiles', JSON.stringify(profiles));
+    }
+    function loadProfiles() {
+      const profiles = getProfiles();
+      profileSelect.innerHTML = '<option value="">New Profile</option>';
+      Object.keys(profiles).forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        profileSelect.appendChild(opt);
+      });
+    }
+    loadProfiles();
+
+    profileSelect.addEventListener('change', () => {
+      const name = profileSelect.value;
+      const hostEl = document.getElementById('host');
+      const portEl = document.getElementById('port');
+      const userEl = document.getElementById('username');
+      const pwdField = document.getElementById('password-field');
+      const keyField = document.getElementById('key-field');
+      const pwdEl = document.getElementById('password');
+      const keyEl = document.getElementById('privateKey');
+      const passphraseEl = document.getElementById('passphrase');
+
+      if (!name) {
+        hostEl.value = '';
+        portEl.value = '22';
+        userEl.value = '';
+        document.querySelector('input[name="auth"][value="password"]').checked = true;
+        pwdField.style.display = '';
+        keyField.style.display = 'none';
+        pwdEl.value = '';
+        keyEl.value = '';
+        passphraseEl.value = '';
+        return;
+      }
+      const config = getProfiles()[name] || {};
+      hostEl.value = config.host || '';
+      portEl.value = config.port || '22';
+      userEl.value = config.username || '';
+      if (config.privateKey) {
+        document.querySelector('input[name="auth"][value="key"]').checked = true;
+        pwdField.style.display = 'none';
+        keyField.style.display = '';
+        keyEl.value = config.privateKey;
+        passphraseEl.value = config.passphrase || '';
+      } else {
+        document.querySelector('input[name="auth"][value="password"]').checked = true;
+        pwdField.style.display = '';
+        keyField.style.display = 'none';
+        pwdEl.value = config.password || '';
+      }
+    });
+
+    saveProfileBtn.addEventListener('click', () => {
+      const name = prompt('Enter profile name:');
+      if (!name) return;
+      const auth = document.querySelector('input[name="auth"]:checked').value;
+      const profiles = getProfiles();
+      profiles[name] = {
+        host: document.getElementById('host').value,
+        port: document.getElementById('port').value,
+        username: document.getElementById('username').value,
+        password: auth === 'password' ? document.getElementById('password').value : undefined,
+        privateKey: auth === 'key' ? document.getElementById('privateKey').value : undefined,
+        passphrase: auth === 'key' ? document.getElementById('passphrase').value : undefined
+      };
+      saveProfiles(profiles);
+      loadProfiles();
+      profileSelect.value = name;
+    });
+
+    deleteProfileBtn.addEventListener('click', () => {
+      const name = profileSelect.value;
+      if (!name) return;
+      if (confirm('Delete profile "' + name + '"?')) {
+        const profiles = getProfiles();
+        delete profiles[name];
+        saveProfiles(profiles);
+        loadProfiles();
+        profileSelect.value = '';
+        profileSelect.dispatchEvent(new Event('change'));
+      }
+    });
 
     function showForm(show) {
       document.getElementById('form').style.display = show ? 'block' : 'none';
