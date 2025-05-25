@@ -324,7 +324,10 @@
     document.getElementById('runCodex').addEventListener('click', () => {
       const src = document.getElementById('sourceDir').value.trim();
       const preprocess = document.getElementById('preprocess').value.trim();
-      if (preprocess) { socket.emit('ssh_input', preprocess + '\n'); }
+      if (preprocess) {
+        const commands = preprocess.split(';').map(cmd => cmd.trim()).filter(cmd => cmd.length > 0);
+        commands.forEach(cmd => socket.emit('ssh_input', cmd + '\n'));
+      }
       const provider = document.getElementById('provider').value;
       const apiKey = document.getElementById('apiKey').value.trim();
       const approval = document.getElementById('approvalMode').value;

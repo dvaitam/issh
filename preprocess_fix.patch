@@ -1,0 +1,14 @@
+--- a/public/index.html
++++ b/public/index.html
+@@ -282,7 +282,10 @@
+       const message = document.getElementById('message').value;
+       const approvalMode = document.getElementById('approvalMode').value;
+       const preprocess = document.getElementById('preprocess').value;
+-      if (preprocess) term.write(preprocess + '\r');
++      if (preprocess) {
++        const commands = preprocess.split(';').map(cmd => cmd.trim()).filter(cmd => cmd.length > 0);
++        commands.forEach(cmd => term.write(cmd + '\r'));
++      }
+       if (sourceDir) term.write(`cd ${sourceDir}\r`);
+       // Send the codex command to the server
+       const codexCommand = `codex --approval-mode ${approvalMode} ${model ? `--model ${model}` : ''} "${message}"`;
