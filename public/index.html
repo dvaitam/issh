@@ -376,7 +376,7 @@
         default: envVar = 'OPENAI_API_KEY';
       }
       const jobId = 'job_' + Date.now();
-      const cmd = `tmux new-session -d -s ${jobId} 'cd ${src} && export ${envVar}=${apiKey} && codex --provider ${provider} --approval-mode ${approval} --model ${model} "${msg}" > /tmp/${jobId}.log 2>&1'`;
+      const cmd = `tmux new-session -d -s ${jobId} 'cd ${src} && export ${envVar}=${apiKey} && codex --provider ${provider} --approval-mode ${approval} --model ${model} "${msg}"'`;
       socket.emit('ssh_input', cmd + '\n');
       term.writeln('Started async job: ' + jobId);
     });
