@@ -26,3 +26,5 @@ yarn.lock
 
 # Public uploads (if any)
 public/uploads/
+
+jobs.json

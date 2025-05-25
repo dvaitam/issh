@@ -86,10 +86,13 @@
       <form id="codexForm">
         <label>Preprocess Commands
           <textarea id="preprocess" rows="2" placeholder="shell commands to run before cd"></textarea>
-        </label>
-        <label>Source Dir
-          <input type="text" id="sourceDir" placeholder="/path/to/project" />
-        </label>
+          </label>
+          <label>Git URL
+            <input type="text" id="gitUrl" placeholder="https://github.com/user/repo.git" />
+          </label>
+          <label>Source Dir
+            <input type="text" id="sourceDir" placeholder="/path/to/project" />
+          </label>
         <label>Provider
           <select id="provider">
             <option value="openai">openai</option>
@@ -333,6 +336,7 @@
     });
     document.getElementById('runCodex').addEventListener('click', () => {
       const src = document.getElementById('sourceDir').value.trim();
+      const gitUrl = document.getElementById('gitUrl').value.trim();
       const preprocess = document.getElementById('preprocess').value.trim();
       if (preprocess) {
         const commands = preprocess.split(';').map(cmd => cmd.trim()).filter(cmd => cmd.length > 0);
@@ -344,6 +348,9 @@
       const model = document.getElementById('model').value;
       const msg = document.getElementById('message').value.replace(/\r?\n/g, ' ');
       if (!src || !apiKey) { alert('Source Dir and API Key are required'); return; }
+      if (gitUrl) {
+        socket.emit('ssh_input', `if [ ! -d "${src}" ]; then git clone ${gitUrl} "${src}"; fi\n`);
+      }
       if (!model) { alert('Please load and select a model'); return; }
       socket.emit('ssh_input', 'cd ' + src + '\n');
       let envVar;
@@ -388,6 +395,11 @@
 
     document.getElementById('runAsync').addEventListener('click', () => {
       const src = document.getElementById('sourceDir').value.trim();
+      const gitUrl = document.getElementById('gitUrl').value.trim();
+      let cloneCmd = '';
+      if (gitUrl) {
+        cloneCmd = `if [ ! -d "${src}" ]; then git clone ${gitUrl} "${src}"; fi && `;
+      }
       const provider = document.getElementById('provider').value;
       const apiKey = document.getElementById('apiKey').value.trim();
       const approval = document.getElementById('approvalMode').value;
@@ -406,7 +418,7 @@
         default: envVar = 'OPENAI_API_KEY';
       }
       const jobId = 'job_' + Date.now();
-      const cmd = `tmux new-session -d -s ${jobId} 'cd ${src} && export ${envVar}=${apiKey} && codex --provider ${provider} --approval-mode ${approval} --model ${model} "${msg}"'`;
+      const cmd = `tmux new-session -d -s ${jobId} '${cloneCmd}cd ${src} && export ${envVar}=${apiKey} && codex --provider ${provider} --approval-mode ${approval} --model ${model} "${msg}"'`;
       socket.emit('ssh_input', cmd + '\n');
       term.writeln('Started async job: ' + jobId);
       fetch('/api/jobs', {
