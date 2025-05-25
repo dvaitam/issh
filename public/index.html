@@ -84,13 +84,20 @@
   <div id="console">
     <div id="sidebar">
       <form id="codexForm">
+        <label>Preprocess Commands
+          <textarea id="preprocess" rows="2" placeholder="shell commands to run before cd"></textarea>
+        </label>
         <label>Source Dir
           <input type="text" id="sourceDir" placeholder="/path/to/project" />
         </label>
         <label>Provider
           <select id="provider">
-            <option>openai</option>
-            <option>azure</option>
+            <option value="openai">openai</option>
+            <option value="azure">azure</option>
+            <option value="gemini">gemini</option>
+            <option value="xai">xai</option>
+            <option value="claude">claude</option>
+            <option value="deepseek">deepseek</option>
           </select>
         </label>
         <label>API Key
@@ -104,8 +111,9 @@
         </label>
         <label>Approval Mode
           <select id="approvalMode">
-            <option>auto</option>
-            <option>manual</option>
+            <option>full-auto</option>
+            <option>suggest</option>
+            <option>auto-edit</option>
           </select>
         </label>
         <label>Message
@@ -285,30 +293,38 @@
     document.getElementById('loadModels').addEventListener('click', () => {
       const provider = document.getElementById('provider').value;
       const apiKey = document.getElementById('apiKey').value.trim();
+      if (!provider) { alert('Please select a provider'); return; }
       if (!apiKey) { alert('API Key is required to fetch models'); return; }
-      fetch('/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, apiKey })
+      fetch('/api/models', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'X-Provider': provider
+        }
       })
-        .then(resp => {
-          if (!resp.ok) return resp.text().then(t => Promise.reject(t));
+        .then(async resp => {
+          if (!resp.ok) {
+            const txt = await resp.text();
+            throw new Error(txt);
+          }
           return resp.json();
         })
         .then(data => {
           const modelSelect = document.getElementById('model');
           modelSelect.innerHTML = '';
-          data.models.forEach(m => {
+          (data.data || []).forEach(m => {
             const opt = document.createElement('option');
-            opt.value = m;
-            opt.textContent = m;
+            opt.value = m.id;
+            opt.textContent = m.id;
             modelSelect.appendChild(opt);
           });
         })
-        .catch(err => alert('Failed to fetch models: ' + err));
+        .catch(err => alert('Failed to fetch models: ' + err.message));
     });
     document.getElementById('runCodex').addEventListener('click', () => {
       const src = document.getElementById('sourceDir').value.trim();
+      const preprocess = document.getElementById('preprocess').value.trim();
+      if (preprocess) { socket.emit('ssh_input', preprocess + '\n'); }
       const provider = document.getElementById('provider').value;
       const apiKey = document.getElementById('apiKey').value.trim();
       const approval = document.getElementById('approvalMode').value;
@@ -317,7 +333,17 @@
       if (!src || !apiKey) { alert('Source Dir and API Key are required'); return; }
       if (!model) { alert('Please load and select a model'); return; }
       socket.emit('ssh_input', 'cd ' + src + '\n');
-      socket.emit('ssh_input', 'export OPENAI_API_KEY=' + apiKey + '\n');
+      let envVar;
+      switch (provider) {
+        case 'openai': envVar = 'OPENAI_API_KEY'; break;
+        case 'azure': envVar = 'AZURE_OPENAI_API_KEY'; break;
+        case 'gemini': envVar = 'GEMINI_API_KEY'; break;
+        case 'xai': envVar = 'XAI_API_KEY'; break;
+        case 'claude': envVar = 'CLAUDE_API_KEY'; break;
+        case 'deepseek': envVar = 'DEEPSEEK_API_KEY'; break;
+        default: envVar = 'OPENAI_API_KEY';
+      }
+      socket.emit('ssh_input', 'export ' + envVar + '=' + apiKey + '\n');
       socket.emit('ssh_input', 'codex --provider ' + provider + ' --approval-mode ' + approval + ' --model ' + model + ' "' + msg + '"\n');
     });
   </script>

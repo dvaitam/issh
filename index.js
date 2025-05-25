@@ -13,14 +13,20 @@ const https = require('https');
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-function fetchOpenAIModels(apiKey) {
+// Proxy to fetch models from chat.manchik.co.uk for any provider
+function fetchModelsProxy(provider, apiKey) {
   return new Promise((resolve, reject) => {
+    // Map local provider to upstream proxy key (e.g., xai -> grok)
+    const upstreamProvider = (provider === 'xai' ? 'grok' : provider);
     const options = {
-      hostname: 'api.openai.com',
+      hostname: 'chat.manchik.co.uk',
       port: 443,
-      path: '/v1/models',
+      path: '/api/models',
       method: 'GET',
-      headers: { 'Authorization': `Bearer ${apiKey}` }
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'X-Provider': upstreamProvider
+      }
     };
     const req = https.request(options, res => {
       let data = '';
@@ -29,10 +35,13 @@ function fetchOpenAIModels(apiKey) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
             const json = JSON.parse(data);
-            const models = json.data.map(m => m.id);
-            resolve(models);
-          } catch (e) { reject(e); }
-        } else { reject(new Error(`OpenAI API returned status ${res.statusCode}: ${data}`)); }
+            resolve(json);
+          } catch (e) {
+            reject(e);
+          }
+        } else {
+          reject(new Error(`Proxy API returned status ${res.statusCode}: ${data}`));
+        }
       });
     });
     req.on('error', reject);
@@ -40,19 +49,20 @@ function fetchOpenAIModels(apiKey) {
   });
 }
 
-app.post('/models', async (req, res) => {
-  const { provider, apiKey } = req.body;
-  if (!provider || !apiKey) {
-    return res.status(400).json({ error: 'provider and apiKey required' });
+// Endpoint to fetch models via proxy to chat.manchik.co.uk
+app.get('/api/models', async (req, res) => {
+  const authHeader = req.header('Authorization') || req.header('authorization');
+  if (!authHeader) {
+    return res.status(400).json({ error: 'Missing Authorization header' });
+  }
+  const apiKey = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+  const provider = (req.header('X-Provider') || req.header('x-provider') || '').toLowerCase();
+  if (!provider) {
+    return res.status(400).json({ error: 'Missing X-Provider header' });
   }
   try {
-    let models;
-    if (provider === 'openai') {
-      models = await fetchOpenAIModels(apiKey);
-    } else {
-      return res.status(501).json({ error: 'provider not supported' });
-    }
-    res.json({ models });
+    const upstreamJson = await fetchModelsProxy(provider, apiKey);
+    res.json(upstreamJson);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
