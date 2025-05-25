@@ -48,7 +48,10 @@
     #form button:hover {
       background-color: #0056b3;
     }
-    #terminal { flex: 1; display: none; overflow: hidden; }
+    #terminal { flex: 1; overflow: hidden; }
+    #console { display: none; flex: 1; display: flex; }
+    #sidebar { width: 250px; padding: 10px; background: #f4f4f4; overflow-y: auto; box-sizing: border-box; }
+    #sidebar label, #sidebar select, #sidebar input, #sidebar textarea, #sidebar button { display: block; width: 100%; margin-bottom: 8px; }
     @media (max-width: 600px) {
       #form { flex-direction: column; align-items: stretch; }
       #form button { width: 100%; }
@@ -78,7 +81,41 @@
     </div>
     <button id="connect">Connect</button>
   </div>
-  <div id="terminal"></div>
+  <div id="console">
+    <div id="sidebar">
+      <form id="codexForm">
+        <label>Source Dir
+          <input type="text" id="sourceDir" placeholder="/path/to/project" />
+        </label>
+        <label>Provider
+          <select id="provider">
+            <option>openai</option>
+            <option>azure</option>
+          </select>
+        </label>
+        <label>API Key
+          <input type="password" id="apiKey" />
+        </label>
+        <button type="button" id="loadModels">Load Models</button>
+        <label>Model
+          <select id="model">
+            <option value="">-- select model --</option>
+          </select>
+        </label>
+        <label>Approval Mode
+          <select id="approvalMode">
+            <option>auto</option>
+            <option>manual</option>
+          </select>
+        </label>
+        <label>Message
+          <textarea id="message" rows="3"></textarea>
+        </label>
+        <button type="button" id="runCodex">Run in Terminal</button>
+      </form>
+    </div>
+    <div id="terminal"></div>
+  </div>
   <script src="/socket.io/socket.io.js"></script>
   <!-- xterm.js and fit addon UMD bundles via unpkg CDN -->
   <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
@@ -191,6 +228,10 @@
     function showForm(show) {
       document.getElementById('form').style.display = show ? 'block' : 'none';
       document.getElementById('terminal').style.display = show ? 'none' : 'block';
+   }
+    function showConnectForm(show) {
+      document.getElementById('form').style.display = show ? 'flex' : 'none';
+      document.getElementById('console').style.display = show ? 'none' : 'flex';
     }
 
     document.getElementsByName('auth').forEach(radio => {
@@ -217,7 +258,7 @@
     });
 
     socket.on('ssh_ready', () => {
-      showForm(false);
+      showConnectForm(false);
       term.open(document.getElementById('terminal'));
       fitAddon.fit();
       socket.emit('ssh_resize', { cols: term.cols, rows: term.rows });
@@ -228,11 +269,11 @@
       socket.on('ssh_close', () => {
         alert('SSH session closed');
         connected = false;
-        showForm(true);
+        showConnectForm(true);
       });
       socket.on('ssh_error', msg => {
         alert(msg);
-        if (!connected) showForm(true);
+        if (!connected) showConnectForm(true);
       });
       window.addEventListener('resize', () => {
         fitAddon.fit();
@@ -240,6 +281,44 @@
           socket.emit('ssh_resize', { cols: term.cols, rows: term.rows });
         }
       });
+    });
+    document.getElementById('loadModels').addEventListener('click', () => {
+      const provider = document.getElementById('provider').value;
+      const apiKey = document.getElementById('apiKey').value.trim();
+      if (!apiKey) { alert('API Key is required to fetch models'); return; }
+      fetch('/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, apiKey })
+      })
+        .then(resp => {
+          if (!resp.ok) return resp.text().then(t => Promise.reject(t));
+          return resp.json();
+        })
+        .then(data => {
+          const modelSelect = document.getElementById('model');
+          modelSelect.innerHTML = '';
+          data.models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            modelSelect.appendChild(opt);
+          });
+        })
+        .catch(err => alert('Failed to fetch models: ' + err));
+    });
+    document.getElementById('runCodex').addEventListener('click', () => {
+      const src = document.getElementById('sourceDir').value.trim();
+      const provider = document.getElementById('provider').value;
+      const apiKey = document.getElementById('apiKey').value.trim();
+      const approval = document.getElementById('approvalMode').value;
+      const model = document.getElementById('model').value;
+      const msg = document.getElementById('message').value.replace(/\r?\n/g, ' ');
+      if (!src || !apiKey) { alert('Source Dir and API Key are required'); return; }
+      if (!model) { alert('Please load and select a model'); return; }
+      socket.emit('ssh_input', 'cd ' + src + '\n');
+      socket.emit('ssh_input', 'export OPENAI_API_KEY=' + apiKey + '\n');
+      socket.emit('ssh_input', 'codex --provider ' + provider + ' --approval-mode ' + approval + ' --model ' + model + ' "' + msg + '"\n');
     });
   </script>
 </body>
