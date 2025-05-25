@@ -3,6 +3,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { Client } = require('ssh2');
 const path = require('path');
+const fs = require('fs');
+const jobsFile = path.join(__dirname, 'jobs.json');
 
 const app = express();
 const server = http.createServer(app);
@@ -66,6 +68,52 @@ app.get('/api/models', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Job management endpoints
+app.get('/api/jobs', (req, res) => {
+  fs.readFile(jobsFile, 'utf8', (err, data) => {
+    if (err) {
+      if (err.code === 'ENOENT') {
+        return res.json([]);
+      } else {
+        return res.status(500).json({ error: err.message });
+      }
+    }
+    try {
+      const jobs = JSON.parse(data);
+      return res.json(jobs);
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+});
+
+app.post('/api/jobs', (req, res) => {
+  const { jobId } = req.body;
+  if (!jobId) {
+    return res.status(400).json({ error: 'Missing jobId' });
+  }
+  fs.readFile(jobsFile, 'utf8', (err, data) => {
+    let jobs = [];
+    if (!err) {
+      try {
+        jobs = JSON.parse(data);
+        if (!Array.isArray(jobs)) jobs = [];
+      } catch (_) {
+        jobs = [];
+      }
+    } else if (err.code !== 'ENOENT') {
+      return res.status(500).json({ error: err.message });
+    }
+    jobs.push({ jobId, createdAt: new Date().toISOString() });
+    fs.writeFile(jobsFile, JSON.stringify(jobs, null, 2), err2 => {
+      if (err2) {
+        return res.status(500).json({ error: err2.message });
+      }
+      res.status(201).json({ success: true });
+    });
+  });
 });
 
 io.on('connection', socket => {

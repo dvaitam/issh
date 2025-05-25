@@ -121,6 +121,10 @@
         </label>
         <button type="button" id="runCodex">Run in Terminal</button>
         <button type="button" id="runAsync">Run Async</button>
+        <div style="margin-bottom:8px;">
+          <label>Jobs:</label>
+          <ul id="jobsList" style="list-style:none; padding:0; max-height:100px; overflow-y:auto;"></ul>
+        </div>
         <label>Attach Job ID:
           <input type="text" id="attachJobId" placeholder="job id" />
         </label>
@@ -356,6 +360,32 @@
       socket.emit('ssh_input', 'codex --provider ' + provider + ' --approval-mode ' + approval + ' --model ' + model + ' "' + msg + '"\n');
     });
 
+    function loadJobs() {
+      fetch('/api/jobs')
+        .then(resp => {
+          if (!resp.ok) {
+            throw new Error('Failed to fetch jobs');
+          }
+          return resp.json();
+        })
+        .then(data => {
+          const jobsList = document.getElementById('jobsList');
+          jobsList.innerHTML = '';
+          (data || []).forEach(job => {
+            const li = document.createElement('li');
+            li.textContent = job.jobId;
+            li.style.cursor = 'pointer';
+            li.addEventListener('click', () => {
+              document.getElementById('attachJobId').value = job.jobId;
+            });
+            jobsList.appendChild(li);
+          });
+        })
+        .catch(err => console.error('Error loading jobs', err));
+    }
+
+    loadJobs();
+
     document.getElementById('runAsync').addEventListener('click', () => {
       const src = document.getElementById('sourceDir').value.trim();
       const provider = document.getElementById('provider').value;
@@ -379,6 +409,19 @@
       const cmd = `tmux new-session -d -s ${jobId} 'cd ${src} && export ${envVar}=${apiKey} && codex --provider ${provider} --approval-mode ${approval} --model ${model} "${msg}"'`;
       socket.emit('ssh_input', cmd + '\n');
       term.writeln('Started async job: ' + jobId);
+      fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId })
+      })
+        .then(resp => {
+          if (!resp.ok) {
+            return resp.text().then(text => { throw new Error(text); });
+          }
+          return resp.json();
+        })
+        .then(() => loadJobs())
+        .catch(err => console.error('Failed to create job', err));
     });
 
     document.getElementById('attachJob').addEventListener('click', () => {
